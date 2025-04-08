@@ -1,0 +1,48 @@
+{
+  "match": [
+    {
+      "PRIORITY": "^0|1|2|3$",
+      "__allow": [
+        {
+          "MESSAGE": "^Red"
+        }
+      ]
+    },
+    {
+      "MESSAGE": "ERROR|error|Error",
+      "__allow": [
+        {
+          "MESSAGE": "Nix daemon error"
+        },
+        {
+          "MESSAGE": "monitor on wsdd"
+        },
+        {
+          "MESSAGE": "^Realtime error",
+          "_COMM": "^\\.xdg-desktop-po$"
+        },
+        {
+          "MESSAGE": "^Error opening rules directory.*/(usr/local/share|run)/polkit-1/rules.d",
+          "SYSLOG_IDENTIFIER": "^polkitd$"
+        },
+        {
+          "SYSLOG_IDENTIFIER": "^kdenlive|niri|waybar|kernel$"
+        },
+        {
+          "MESSAGE": "DBus\\.Error.*MediaPlayer2",
+          "_COMM": "^playerctld$"
+        },
+        {
+          "MESSAGE": "DBus\\.Error\\.NameHasNoOwner.*org\\.gnome\\.SessionManager"
+        },
+        {
+          "MESSAGE": "DBus\\.Error\\.ServiceUnknown",
+          "SYSLOG_IDENTIFIER": "^cupsd$"
+        },
+        {
+          "MESSAGE": "UPower.*DBus\\.Error\\.(ServiceUnknown|NameHasNoOwner)"
+        }
+      ]
+    }
+  ]
+}
