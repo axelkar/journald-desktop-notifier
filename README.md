@@ -41,17 +41,17 @@ This project provides a [Home Manager](https://github.com/nix-community/home-man
 ```nix
 { ... }:
 {
-    imports = [ inputs.journald-desktop-notifier.homeModules.default ];
-    services.journald-desktop-notifier = {
-        enable = true;
-        settings.match = [{
-            PRIORITY = "^0|1|2|3$";
-            __allow = [{
-                SYSLOG_IDENTIFIER = "^systemd-coredump$";
-                MESSAGE = "user 30001"; # nixbld1
-            }];
-        ]};
-    };
+  imports = [ inputs.journald-desktop-notifier.homeModules.default ];
+  services.journald-desktop-notifier = {
+    enable = true;
+    settings.match = [{
+      PRIORITY = "^0|1|2|3$";
+      __allow = [{
+        SYSLOG_IDENTIFIER = "^systemd-coredump$";
+        MESSAGE = "user 30001"; # nixbld1
+      }];
+    }];
+  };
 }
 ```
 
@@ -63,17 +63,17 @@ configuration options. Note that it defines user units. Here's an example:
 ```nix
 { ... }:
 {
-    imports = [ inputs.journald-desktop-notifier.nixosModules.default ];
-    services.journald-desktop-notifier = {
-        enable = true;
-        settings.match = [{
-            PRIORITY = "^0|1|2|3$";
-            __allow = [{
-                SYSLOG_IDENTIFIER = "^systemd-coredump$";
-                MESSAGE = "user 30001"; # nixbld1
-            }];
-        ]};
-    };
+  imports = [ inputs.journald-desktop-notifier.nixosModules.default ];
+  services.journald-desktop-notifier = {
+    enable = true;
+    settings.match = [{
+      PRIORITY = "^0|1|2|3$";
+      __allow = [{
+        SYSLOG_IDENTIFIER = "^systemd-coredump$";
+        MESSAGE = "user 30001"; # nixbld1
+      }];
+    }];
+  };
 }
 ```
 
