@@ -2,7 +2,7 @@
   "match": [
     {
       "PRIORITY": "^0|1|2|3$",
-      "__allow": [
+      "allow": [
         {
           "MESSAGE": "^Red"
         }
@@ -10,7 +10,7 @@
     },
     {
       "MESSAGE": "ERROR|error|Error",
-      "__allow": [
+      "allow": [
         {
           "MESSAGE": "Nix daemon error"
         },

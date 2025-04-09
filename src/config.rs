@@ -60,7 +60,7 @@ impl Config {
 /// All regexes and zero allows must match for this level to deny.
 #[derive(serde::Deserialize, Debug, PartialEq)]
 pub struct Deny {
-    #[serde(default, rename = "__allow")]
+    #[serde(default, rename = "allow")]
     pub allow_rules: Vec<Allow>,
     #[serde(flatten, deserialize_with = "deserialize_matcher_hashmap")]
     field_regexes: HashMap<Box<CStr>, Regex>,
@@ -110,7 +110,7 @@ impl Deny {
 /// All regexes and zero denies must match for this level to allow.
 #[derive(serde::Deserialize, Debug)]
 pub struct Allow {
-    #[serde(default, rename = "__deny")]
+    #[serde(default, rename = "deny")]
     pub deny_rules: Vec<Deny>,
     #[serde(flatten, deserialize_with = "deserialize_matcher_hashmap")]
     field_regexes: HashMap<Box<CStr>, Regex>,

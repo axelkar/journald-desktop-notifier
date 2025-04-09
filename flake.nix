@@ -46,7 +46,7 @@
               {
                 match = [{
                   PRIORITY = "^0|1|2|3$";
-                  __allow = [{
+                  allow = [{
                     SYSLOG_IDENTIFIER = "^systemd-coredump$";
                     MESSAGE = "user 30001"; # nixbld1
                   }];
