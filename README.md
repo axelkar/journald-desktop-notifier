@@ -4,7 +4,7 @@ System journal error notifier
 
 ## Configuration
 
-Specify matches and their edge cases. Make sure to include a `PRIORITY` match in your configuration.
+Configuration can be written in either TOML or JSON. JSON support has been included to enable writing configuration automatically. Specify matches and their edge cases. Make sure to include a `PRIORITY` match in your configuration. View the possible fields using `journalctl -b0 -o verbose`.
 
 ```toml
 [[match]]
@@ -32,6 +32,49 @@ PRIORITY ~= "^0|1|2|3$"
         && !(_SYSTEMD_UNIT ~= "^but-actually.service$")
     )
 )
+```
+
+## Home Manager module
+
+This project provides a [Home Manager](https://github.com/nix-community/home-manager/) module. To use it, write something like the following into your configuration.
+
+```nix
+{ ... }:
+{
+    imports = [ inputs.journald-desktop-notifier.homeModules.default ];
+    services.journald-desktop-notifier = {
+        enable = true;
+        settings.match = [{
+            PRIORITY = "^0|1|2|3$";
+            __allow = [{
+                SYSLOG_IDENTIFIER = "^systemd-coredump$";
+                MESSAGE = "user 30001"; # nixbld1
+            }];
+        ]};
+    };
+}
+```
+
+## NixOS module
+
+This project also provides a NixOS module, providing similar functionality and
+configuration options. Note that it defines user units. Here's an example:
+
+```nix
+{ ... }:
+{
+    imports = [ inputs.journald-desktop-notifier.nixosModules.default ];
+    services.journald-desktop-notifier = {
+        enable = true;
+        settings.match = [{
+            PRIORITY = "^0|1|2|3$";
+            __allow = [{
+                SYSLOG_IDENTIFIER = "^systemd-coredump$";
+                MESSAGE = "user 30001"; # nixbld1
+            }];
+        ]};
+    };
+}
 ```
 
 ## Development
