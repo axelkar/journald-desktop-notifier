@@ -1,6 +1,6 @@
 [package]
 name = "journald-desktop-notifier"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Axel Karjalainen <axel@axka.fi>"]
 edition = "2024"
 description = "System journal error notifier"
