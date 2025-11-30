@@ -15,9 +15,9 @@ PRIORITY = "^0|1|2|3$"
 [[match]]
 SYSLOG_IDENTIFIER = "^foo$"
 MESSAGE = "^bar"
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "^bar spam"
-[[match.allow.deny]]
+[[match.ignore.except-notify]]
 _SYSTEMD_UNIT = "^but-actually.service$"
 ```
 
@@ -46,7 +46,7 @@ This project provides a [Home Manager](https://github.com/nix-community/home-man
     enable = true;
     settings.match = [{
       PRIORITY = "^0|1|2|3$";
-      allow = [{
+      ignore = [{
         SYSLOG_IDENTIFIER = "^systemd-coredump$";
         MESSAGE = "user 30001"; # nixbld1
       }];
@@ -68,7 +68,7 @@ configuration options. Note that it defines user units. Here's an example:
     enable = true;
     settings.match = [{
       PRIORITY = "^0|1|2|3$";
-      allow = [{
+      ignore = [{
         SYSLOG_IDENTIFIER = "^systemd-coredump$";
         MESSAGE = "user 30001"; # nixbld1
       }];

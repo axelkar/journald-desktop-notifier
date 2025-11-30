@@ -46,7 +46,7 @@
               {
                 match = [{
                   PRIORITY = "^0|1|2|3$";
-                  allow = [{
+                  ignore = [{
                     SYSLOG_IDENTIFIER = "^systemd-coredump$";
                     MESSAGE = "user 30001"; # nixbld1
                   }];
@@ -65,7 +65,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          default = pkgs.rustPlatform.buildRustPackage rec {
+          default = pkgs.rustPlatform.buildRustPackage {
             pname = "journald-desktop-notifier";
             version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
 
@@ -84,6 +84,7 @@
             meta = with nixpkgs.lib; {
               description = "System journal error notifier";
               homepage = "https://github.com/axelkar/journald-desktop-notifier";
+              license = with licenses; [ mit asl20 ];
             };
           };
         }

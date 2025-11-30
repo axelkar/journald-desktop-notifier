@@ -1,42 +1,42 @@
 [[match]]
 # 0 = emerg, 1 = alert, 2 = critical, 3 = error
 PRIORITY = "^0|1|2|3$"
-#[[match.allow]]
+#[[match.ignore]]
 #SYSLOG_IDENTIFIER = "^systemd-coredump$"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "^Red" # temp
 
 [[match]]
 MESSAGE = "ERROR|error|Error"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "Nix daemon error" # temp
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "monitor on wsdd"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "^Realtime error"
 _COMM = "^\\.xdg-desktop-po$"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "^Error opening rules directory.*/(usr/local/share|run)/polkit-1/rules.d"
 SYSLOG_IDENTIFIER = "^polkitd$"
 
-[[match.allow]]
+[[match.ignore]]
 SYSLOG_IDENTIFIER = "^kdenlive|niri|waybar|kernel$"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "DBus\\.Error.*MediaPlayer2"
 _COMM = "^playerctld$"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "DBus\\.Error\\.NameHasNoOwner.*org\\.gnome\\.SessionManager"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "DBus\\.Error\\.ServiceUnknown"
 SYSLOG_IDENTIFIER = "^cupsd$"
 
-[[match.allow]]
+[[match.ignore]]
 MESSAGE = "UPower.*DBus\\.Error\\.(ServiceUnknown|NameHasNoOwner)"
