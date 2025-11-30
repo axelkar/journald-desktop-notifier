@@ -12,7 +12,6 @@ use systemd::{JournalWaitResult, id128::Id128, journal::JournalRef};
 
 use crate::config::{NotifyResult, NotifyResultAllowed};
 
-#[expect(clippy::too_many_lines, reason = "TODO: shorten")] // TODO: shorten
 fn main() -> Result<ExitCode> {
     fn next_entry(journal: &mut JournalRef) -> Result<Option<()>> {
         Ok((journal.next()? != 0).then_some(()))
