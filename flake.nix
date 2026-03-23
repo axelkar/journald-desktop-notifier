@@ -78,7 +78,7 @@
             ];
 
             buildInputs = with pkgs; [
-              systemd
+              systemdLibs
             ];
 
             meta = with nixpkgs.lib; {
