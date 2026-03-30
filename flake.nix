@@ -1,8 +1,7 @@
 {
   description = "journald-desktop-notifier devel and build";
 
-  # Unstable required until Rust 1.85 (2024 edition) is on stable
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
   # shell.nix compatibility
   inputs.flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
@@ -24,7 +23,7 @@
           enable = lib.mkEnableOption "a system journal error notifier";
           package = lib.mkOption {
             type = lib.types.package;
-            default = self.packages.${pkgs.system}.default;
+            default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             defaultText = lib.literalMD "`journald-desktop-notifier` from the flake defining this module";
             description = ''
               Package to use.
