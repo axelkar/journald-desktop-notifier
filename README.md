@@ -36,13 +36,19 @@ PRIORITY ~= "^0|1|2|3$"
 
 ## Debugging a configuration
 
-Run with `--debug` (or `-d`) to print every entry from the current boot that the configuration matches, as the notification it would show, then exit:
+Run with `--debug` (or `-d`) to print every entry from the current boot that the configuration matches, then exit:
 
 ```sh
 journald-desktop-notifier --debug config.toml
 ```
 
-Each match prints the notification summary as `appname: summary`. Debug mode ignores the saved cursor, does not read or write the state directory, and does not show notifications.
+Each match prints the notification summary as `appname: summary`. Add `--verbose` (or `-v`, requires `--debug`) to also print every field of the entry, sorted by name:
+
+```sh
+journald-desktop-notifier --debug -v config.toml
+```
+
+Debug mode ignores the saved cursor, does not read or write the state directory, and does not show notifications.
 
 ## Home Manager module
 

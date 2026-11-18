@@ -6,7 +6,7 @@ use config::Config;
 use directories::ProjectDirs;
 use itertools::Itertools;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     ffi::{CStr, OsString},
     io::Write,
     path::PathBuf,
@@ -25,17 +25,33 @@ const MAX_SUMMARY_LINES: usize = 3;
 #[derive(Debug)]
 struct Cli {
     debug: bool,
+    verbose: bool,
     config_path: PathBuf,
+}
+
+/// Output selected in debug mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DebugOutput {
+    /// Only the notification summary.
+    Summary,
+    /// The notification summary followed by every journal field.
+    Fields,
 }
 
 /// Parses command-line arguments, accepting flags in any position.
 fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Cli, String> {
     let mut debug = false;
+    let mut verbose = false;
     let mut config_path = None;
 
     for arg in args {
         if arg == "--debug" || arg == "-d" {
             debug = true;
+            continue;
+        }
+
+        if arg == "--verbose" || arg == "-v" {
+            verbose = true;
             continue;
         }
 
@@ -54,7 +70,15 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Cli, String> {
         return Err("Missing CONFIG argument".to_owned());
     };
 
-    Ok(Cli { debug, config_path })
+    if verbose && !debug {
+        return Err("--verbose requires --debug".to_owned());
+    }
+
+    Ok(Cli {
+        debug,
+        verbose,
+        config_path,
+    })
 }
 
 /// Prints the command-line usage text to stderr.
@@ -62,10 +86,11 @@ fn print_usage() {
     eprintln!(concat!(
         "Usage: ",
         env!("CARGO_PKG_NAME"),
-        " [--debug] CONFIG\n\n",
+        " [--debug [-v]] CONFIG\n\n",
         "Options:\n",
-        "  -d, --debug  Print entries of the current boot that match the configuration,\n",
-        "               then exit\n\n",
+        "  -d, --debug    Print entries of the current boot that match the configuration,\n",
+        "                 then exit\n",
+        "  -v, --verbose  With --debug, also print every field of each matching entry\n\n",
         "Report issues at ",
         env!("CARGO_PKG_REPOSITORY"),
         "/issues\n",
@@ -144,8 +169,29 @@ fn notification_content(
     })
 }
 
+/// Formats journal entry fields as indented `NAME=value` lines sorted by name.
+fn format_entry_fields(fields: &BTreeMap<Vec<u8>, Vec<u8>>) -> String {
+    fields
+        .values()
+        .map(|data| format!("    {}", String::from_utf8_lossy(data)))
+        .join("\n")
+}
+
+/// Prints every field of the current journal entry, sorted by name.
+fn print_entry_fields(journal: &mut JournalRef, out: &mut impl Write) -> Result<()> {
+    journal.restart_data();
+
+    let mut fields = BTreeMap::new();
+    while let Some(field) = journal.enumerate_data()? {
+        fields.insert(field.name().to_vec(), field.data().to_vec());
+    }
+
+    writeln!(out, "{}", format_entry_fields(&fields))?;
+    Ok(())
+}
+
 /// Scans every entry of the current boot and prints matching notifications.
-fn debug_journal(config: &Config, journal: &mut JournalRef) -> Result<()> {
+fn debug_journal(config: &Config, journal: &mut JournalRef, output: DebugOutput) -> Result<()> {
     let message_box = c"MESSAGE".into();
     let stdout = std::io::stdout();
     let mut stdout = stdout.lock();
@@ -170,6 +216,11 @@ fn debug_journal(config: &Config, journal: &mut JournalRef) -> Result<()> {
             notification_content(config, &allowed, msg, journal)?;
 
         writeln!(stdout, "{appname}: {summary}")?;
+
+        if let DebugOutput::Fields = output {
+            print_entry_fields(journal, &mut stdout)?;
+            writeln!(stdout)?;
+        }
     }
 
     Ok(())
@@ -193,7 +244,12 @@ fn main() -> Result<ExitCode> {
     journal.match_add("_BOOT_ID", Id128::from_boot()?.to_string())?;
 
     if cli.debug {
-        debug_journal(&config, &mut journal)?;
+        let output = if cli.verbose {
+            DebugOutput::Fields
+        } else {
+            DebugOutput::Summary
+        };
+        debug_journal(&config, &mut journal, output)?;
         return Ok(ExitCode::SUCCESS);
     }
 
@@ -276,11 +332,12 @@ fn main() -> Result<ExitCode> {
 mod tests {
     use super::*;
 
-    /// Parses a config path alone and checks that debug mode stays off.
+    /// Parses a config path alone and checks that debug and verbose stay off.
     #[test]
     fn parse_args_plain_config() {
         let cli = parse_args(["config.toml"].map(OsString::from)).unwrap();
         assert!(!cli.debug);
+        assert!(!cli.verbose);
         assert_eq!(cli.config_path, PathBuf::from("config.toml"));
     }
 
@@ -295,8 +352,32 @@ mod tests {
         ] {
             let cli = parse_args(args.map(OsString::from)).unwrap();
             assert!(cli.debug, "{args:?}");
+            assert!(!cli.verbose, "{args:?}");
             assert_eq!(cli.config_path, PathBuf::from("config.toml"), "{args:?}");
         }
+    }
+
+    /// Parses verbose flags together with debug and checks that verbose is set
+    /// regardless of flag order.
+    #[test]
+    fn parse_args_verbose_with_debug() {
+        for args in [
+            ["--debug", "-v", "config.toml"],
+            ["--verbose", "--debug", "config.toml"],
+            ["config.toml", "-d", "--verbose"],
+        ] {
+            let cli = parse_args(args.map(OsString::from)).unwrap();
+            assert!(cli.debug, "{args:?}");
+            assert!(cli.verbose, "{args:?}");
+            assert_eq!(cli.config_path, PathBuf::from("config.toml"), "{args:?}");
+        }
+    }
+
+    /// Passes verbose without debug and checks that parsing rejects it.
+    #[test]
+    fn parse_args_verbose_without_debug() {
+        let error = parse_args(["-v", "config.toml"].map(OsString::from)).unwrap_err();
+        assert_eq!(error, "--verbose requires --debug");
     }
 
     /// Passes no arguments and checks that parsing reports the missing config path.
@@ -318,5 +399,25 @@ mod tests {
     fn parse_args_unknown_option() {
         let error = parse_args(["--bogus"].map(OsString::from)).unwrap_err();
         assert_eq!(error, "Unknown option: --bogus");
+    }
+
+    /// Builds fields out of name order and checks the sorted, indented format.
+    #[test]
+    fn format_entry_fields_sorts_and_indents() {
+        let fields = std::collections::BTreeMap::from([
+            (b"ZZZ".to_vec(), b"ZZZ=last".to_vec()),
+            (b"AAA".to_vec(), b"AAA=first".to_vec()),
+        ]);
+        assert_eq!(format_entry_fields(&fields), "    AAA=first\n    ZZZ=last");
+    }
+
+    /// Stores invalid UTF-8 in a field value and checks lossy rendering.
+    #[test]
+    fn format_entry_fields_lossy_utf8() {
+        let fields = std::collections::BTreeMap::from([(
+            b"BAD".to_vec(),
+            [b'B', b'A', b'D', b'=', 0xff].to_vec(),
+        )]);
+        assert_eq!(format_entry_fields(&fields), "    BAD=\u{FFFD}");
     }
 }
