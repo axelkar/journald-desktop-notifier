@@ -107,6 +107,9 @@ configuration options. Note that it defines user units. Here's an example:
 
    i.e. `cargo build`, `cargo run`, `cargo clippy`, etc.
 
+4. Run the NixOS VM test with `nix build .#checks.<system>.vm-test`, e.g.
+   `nix build .#checks.x86_64-linux.vm-test`.
+
 ## Contributing
 
 Please first make sure that you have not introduced any regressions and format the code by running the following commands at the repository root.

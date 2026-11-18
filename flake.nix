@@ -90,6 +90,13 @@
           };
         };
       }) nixpkgs.legacyPackages;
+      checks = builtins.mapAttrs (system: pkgs: {
+        vm-test = pkgs.testers.runNixOSTest (
+          import ./nix/vm-test.nix self.nixosModules.default
+        );
+      }) (
+        nixpkgs.lib.filterAttrs (system: _: nixpkgs.lib.hasSuffix "-linux" system) nixpkgs.legacyPackages
+      );
       devShells = builtins.mapAttrs (system: pkgs: {
         default = pkgs.mkShell {
           strictDeps = true;
