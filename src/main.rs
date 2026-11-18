@@ -5,18 +5,88 @@ mod config;
 use config::Config;
 use directories::ProjectDirs;
 use itertools::Itertools;
-use std::{collections::HashMap, process::ExitCode};
+use std::{collections::HashMap, ffi::CStr, process::ExitCode};
 
 use color_eyre::eyre::{Context, OptionExt, Result};
 use systemd::{JournalWaitResult, id128::Id128, journal::JournalRef};
 
 use crate::config::{NotifyResult, NotifyResultAllowed};
 
-fn main() -> Result<ExitCode> {
-    fn next_entry(journal: &mut JournalRef) -> Result<Option<()>> {
-        Ok((journal.next()? != 0).then_some(()))
+/// Maximum number of message lines included in a notification summary.
+const MAX_SUMMARY_LINES: usize = 3;
+
+/// Advances the journal to the next entry, returning `None` at the end.
+fn next_entry(journal: &mut JournalRef) -> Result<Option<()>> {
+    Ok((journal.next()? != 0).then_some(()))
+}
+
+/// Returns the first matcher in the config that allows notifying the current entry.
+#[expect(
+    clippy::borrowed_box,
+    reason = "Impossible due to the current borrow checker"
+)]
+fn match_entry<'config: 'field_name, 'field_name>(
+    config: &'config Config,
+    field_cache: &mut HashMap<&'field_name Box<CStr>, Vec<u8>>,
+    journal: &mut JournalRef,
+) -> Result<NotifyResult> {
+    let mut res = NotifyResult::Ignored;
+    for matcher in &config.matchers {
+        res = matcher
+            .allows_notify(field_cache, journal)
+            .wrap_err("Failed to determine whether message should be matched")?;
+        if matches!(res, NotifyResult::NotifyAllowed(_)) {
+            break;
+        }
+    }
+    Ok(res)
+}
+
+/// The app name and summary of a notification.
+struct NotificationContent {
+    appname: String,
+    summary: String,
+}
+
+/// Builds the notification content for an allowed match from its message.
+fn notification_content(
+    config: &Config,
+    allowed: &NotifyResultAllowed,
+    msg: &[u8],
+    journal: &mut JournalRef,
+) -> Result<NotificationContent> {
+    let mut appname = None;
+    for field in &config.id_fields {
+        let Some(data) = journal.get_data(field)? else {
+            continue;
+        };
+        let Some(value) = data.value() else {
+            continue;
+        };
+        appname = Some(String::from_utf8_lossy(value).into_owned());
+        break;
     }
 
+    let msg = allowed
+        .content_regex
+        .as_ref()
+        .and_then(|regex| Some(regex.captures(msg)?.get(1)?.as_bytes()))
+        .unwrap_or(msg);
+
+    let msg = String::from_utf8_lossy(msg);
+    let prefix = allowed.prefix.as_deref().unwrap_or_default();
+    let summary = format!("{prefix}{msg}")
+        .lines()
+        .take(MAX_SUMMARY_LINES) // coredumps have lots of lines
+        .join("\n");
+
+    Ok(NotificationContent {
+        appname: appname.unwrap_or_else(|| env!("CARGO_PKG_NAME").to_owned()),
+        summary,
+    })
+}
+
+fn main() -> Result<ExitCode> {
     color_eyre::install()?;
 
     let Some(config_path) = std::env::args_os().nth(1) else {
@@ -88,54 +158,27 @@ fn main() -> Result<ExitCode> {
 
         let mut field_cache = HashMap::new();
 
-        let mut res = NotifyResult::Ignored;
-        for matcher in &config.matchers {
-            res = matcher
-                .allows_notify(&mut field_cache, &mut journal)
-                .wrap_err("Failed to determine whether message should be matched")?;
-            if matches!(res, NotifyResult::NotifyAllowed(_)) {
-                break;
-            }
-        }
+        let NotifyResult::NotifyAllowed(allowed) =
+            match_entry(&config, &mut field_cache, &mut journal)?
+        else {
+            continue;
+        };
 
-        if let NotifyResult::NotifyAllowed(NotifyResultAllowed {
-            prefix,
-            content_regex,
-        }) = res
-        {
-            let mut id = None;
-            for field in &config.id_fields {
-                id = journal
-                    .get_data(field)?
-                    .and_then(|field| Some(String::from_utf8_lossy(field.value()?).into_owned()));
-                if id.is_some() {
-                    break;
-                }
-            }
+        let Some(msg) = config::get_journal_field(&message_box, &mut field_cache, &mut journal)?
+        else {
+            continue;
+        };
 
-            let Some(msg) =
-                config::get_journal_field(&message_box, &mut field_cache, &mut journal)?
-            else {
-                continue;
-            };
+        let NotificationContent { appname, summary } =
+            notification_content(&config, &allowed, msg, &mut journal)?;
 
-            let msg = content_regex
-                .and_then(|regex| Some(regex.captures(msg)?.get(1)?.as_bytes()))
-                .unwrap_or(msg);
-
-            let msg = String::from_utf8_lossy(msg);
-            let prefix = prefix.unwrap_or_default();
-
-            let msg = format!("{prefix}{msg}");
-
-            notify_rust::Notification::new()
-                .appname(id.as_deref().unwrap_or("journald-desktop-notifier"))
-                .summary(&msg.lines().take(3).join("\n")) // coredumps have lots of lines
-                .urgency(notify_rust::Urgency::Critical)
-                //.icon(icon)
-                // devices/computer, devices/drive-harddisk, application-x-firmware,
-                // dialog-warning-symbolic
-                .show()?;
-        }
+        notify_rust::Notification::new()
+            .appname(&appname)
+            .summary(&summary)
+            .urgency(notify_rust::Urgency::Critical)
+            //.icon(icon)
+            // devices/computer, devices/drive-harddisk, application-x-firmware,
+            // dialog-warning-symbolic
+            .show()?;
     }
 }
