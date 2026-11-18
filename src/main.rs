@@ -5,7 +5,13 @@ mod config;
 use config::Config;
 use directories::ProjectDirs;
 use itertools::Itertools;
-use std::{collections::HashMap, ffi::CStr, process::ExitCode};
+use std::{
+    collections::HashMap,
+    ffi::{CStr, OsString},
+    io::Write,
+    path::PathBuf,
+    process::ExitCode,
+};
 
 use color_eyre::eyre::{Context, OptionExt, Result};
 use systemd::{JournalWaitResult, id128::Id128, journal::JournalRef};
@@ -14,6 +20,58 @@ use crate::config::{NotifyResult, NotifyResultAllowed};
 
 /// Maximum number of message lines included in a notification summary.
 const MAX_SUMMARY_LINES: usize = 3;
+
+/// Parsed command-line invocation.
+#[derive(Debug)]
+struct Cli {
+    debug: bool,
+    config_path: PathBuf,
+}
+
+/// Parses command-line arguments, accepting flags in any position.
+fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Cli, String> {
+    let mut debug = false;
+    let mut config_path = None;
+
+    for arg in args {
+        if arg == "--debug" || arg == "-d" {
+            debug = true;
+            continue;
+        }
+
+        if arg.to_string_lossy().starts_with('-') {
+            return Err(format!("Unknown option: {}", arg.to_string_lossy()));
+        }
+
+        if config_path.is_some() {
+            return Err(format!("Unexpected argument: {}", arg.to_string_lossy()));
+        }
+
+        config_path = Some(PathBuf::from(arg));
+    }
+
+    let Some(config_path) = config_path else {
+        return Err("Missing CONFIG argument".to_owned());
+    };
+
+    Ok(Cli { debug, config_path })
+}
+
+/// Prints the command-line usage text to stderr.
+fn print_usage() {
+    eprintln!(concat!(
+        "Usage: ",
+        env!("CARGO_PKG_NAME"),
+        " [--debug] CONFIG\n\n",
+        "Options:\n",
+        "  -d, --debug  Print entries of the current boot that match the configuration,\n",
+        "               then exit\n\n",
+        "Report issues at ",
+        env!("CARGO_PKG_REPOSITORY"),
+        "/issues\n",
+        "View possible fields using `journalctl -o verbose`\n"
+    ));
+}
 
 /// Advances the journal to the next entry, returning `None` at the end.
 fn next_entry(journal: &mut JournalRef) -> Result<Option<()>> {
@@ -86,27 +144,58 @@ fn notification_content(
     })
 }
 
+/// Scans every entry of the current boot and prints matching notifications.
+fn debug_journal(config: &Config, journal: &mut JournalRef) -> Result<()> {
+    let message_box = c"MESSAGE".into();
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+
+    journal
+        .seek_head()
+        .wrap_err("Failed to seek to the start of the journal")?;
+
+    while next_entry(journal)?.is_some() {
+        let mut field_cache = HashMap::new();
+
+        let NotifyResult::NotifyAllowed(allowed) = match_entry(config, &mut field_cache, journal)?
+        else {
+            continue;
+        };
+
+        let Some(msg) = config::get_journal_field(&message_box, &mut field_cache, journal)? else {
+            continue;
+        };
+
+        let NotificationContent { appname, summary } =
+            notification_content(config, &allowed, msg, journal)?;
+
+        writeln!(stdout, "{appname}: {summary}")?;
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<ExitCode> {
     color_eyre::install()?;
 
-    let Some(config_path) = std::env::args_os().nth(1) else {
-        print!(
-            "{}",
-            concat!(
-                "Usage: ",
-                env!("CARGO_PKG_NAME"),
-                " CONFIG\n\nReport issues at ",
-                env!("CARGO_PKG_REPOSITORY"),
-                "/issues\nView possible fields using `journalctl -o verbose`\n"
-            )
-        );
-        return Ok(ExitCode::FAILURE);
+    let cli = match parse_args(std::env::args_os().skip(1)) {
+        Ok(cli) => cli,
+        Err(message) => {
+            eprintln!("{message}\n");
+            print_usage();
+            return Ok(ExitCode::FAILURE);
+        }
     };
 
-    let config = Config::read(&config_path)?;
+    let config = Config::read(&cli.config_path)?;
 
     let mut journal = systemd::journal::OpenOptions::default().open()?;
     journal.match_add("_BOOT_ID", Id128::from_boot()?.to_string())?;
+
+    if cli.debug {
+        debug_journal(&config, &mut journal)?;
+        return Ok(ExitCode::SUCCESS);
+    }
 
     let proj_dirs = ProjectDirs::from("fi.axka", "axka", "journald-desktop-notifier")
         .ok_or_eyre("Failed to get state directory")?;
@@ -180,5 +269,54 @@ fn main() -> Result<ExitCode> {
             // devices/computer, devices/drive-harddisk, application-x-firmware,
             // dialog-warning-symbolic
             .show()?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Parses a config path alone and checks that debug mode stays off.
+    #[test]
+    fn parse_args_plain_config() {
+        let cli = parse_args(["config.toml"].map(OsString::from)).unwrap();
+        assert!(!cli.debug);
+        assert_eq!(cli.config_path, PathBuf::from("config.toml"));
+    }
+
+    /// Parses both debug flag spellings before and after the config path and
+    /// checks that each selects debug mode.
+    #[test]
+    fn parse_args_debug_variants() {
+        for args in [
+            ["--debug", "config.toml"],
+            ["-d", "config.toml"],
+            ["config.toml", "--debug"],
+        ] {
+            let cli = parse_args(args.map(OsString::from)).unwrap();
+            assert!(cli.debug, "{args:?}");
+            assert_eq!(cli.config_path, PathBuf::from("config.toml"), "{args:?}");
+        }
+    }
+
+    /// Passes no arguments and checks that parsing reports the missing config path.
+    #[test]
+    fn parse_args_missing_config() {
+        let error = parse_args(std::iter::empty::<OsString>()).unwrap_err();
+        assert_eq!(error, "Missing CONFIG argument");
+    }
+
+    /// Passes two positional paths and checks that the second is rejected.
+    #[test]
+    fn parse_args_extra_positional() {
+        let error = parse_args(["one.toml", "two.toml"].map(OsString::from)).unwrap_err();
+        assert_eq!(error, "Unexpected argument: two.toml");
+    }
+
+    /// Passes an unknown flag and checks that it is rejected by name.
+    #[test]
+    fn parse_args_unknown_option() {
+        let error = parse_args(["--bogus"].map(OsString::from)).unwrap_err();
+        assert_eq!(error, "Unknown option: --bogus");
     }
 }
