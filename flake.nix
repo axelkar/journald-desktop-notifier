@@ -76,7 +76,8 @@
           ];
 
           buildInputs = with pkgs; [
-            systemdLibs
+            # TODO: remove override when https://github.com/NixOS/nixpkgs/pull/571072 reaches a stable Nixpkgs version like 26.11
+            (systemdLibs.override { withCompression = true; })
           ];
 
           meta = with nixpkgs.lib; {
@@ -98,14 +99,13 @@
             cargo
             rustc
             llvmPackages.bintools # LLD
-            pkg-config
 
             rustfmt
             clippy
             rust-analyzer
           ];
 
-          inherit (self.packages.${system}.default) buildInputs;
+          inputsFrom = [ self.packages.${system}.default ];
         };
       }) nixpkgs.legacyPackages;
       nixosModules.default =
